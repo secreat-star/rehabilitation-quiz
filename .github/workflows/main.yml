@@ -13,18 +13,20 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Build with Docker (Skip Root Check)
+    - name: Build with Docker (Force Bypass)
       run: |
         docker run --rm \
           -v "$(pwd)":/src \
           -w /src \
-          --env BUILDOZER_ALLOW_ROOT=1 \
           kivy/buildozer:latest \
-          buildozer -v android debug
+          /bin/bash -c "
+            # 关键：模拟输入 'y' 并通过管道传递给 buildozer 命令，绕过交互式提示
+            echo 'y' | buildozer -v android debug
+          "
 
     - name: Upload APK
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: rehab-apk
+        name: rehabilitation-quiz-apk
         path: bin/*.apk
