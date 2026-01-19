@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK - From Scratch
 
 on:
   workflow_dispatch:
@@ -8,26 +8,113 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container:
-      # 使用一个专门为 Kivy Buildozer 构建的 Docker 镜像
-      image: crazysk8/buildozer:latest
-      options: --user root  # 以 root 用户运行，避免后续权限问题
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Build with Buildozer
-        run: |
-          # 进入项目目录
-          cd /__w/rehabilitation-quiz/rehabilitation-quiz
-          # 清理可能的旧构建
-          buildozer android clean 2>/dev/null || true
-          # 开始构建，设置环境变量允许root运行，并自动回答'y'
-          echo "y" | BUILDOZER_ALLOW_ROOT=1 buildozer -v android debug
+    - name: Prepare System & Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          python3-pip \
+          python3-venv \
+          git \
+          wget \
+          unzip \
+          openjdk-17-jdk \
+          libssl-dev \
+          libffi-dev \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          cmake
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: /__w/rehabilitation-quiz/rehabilitation-quiz/bin/*.apk
+    - name: Install Python Build Tools
+      run: |
+        python3 -m pip install --upgrade pip wheel setuptools virtualenv
+        pip3 install buildozer cython==0.29.36
+
+    - name: Setup Android SDK & NDK
+      run: |
+        # 创建独立目录
+        mkdir -p $HOME/android
+
+        # 1. 下载并安装命令行工具
+        cd $HOME/android
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip -q commandlinetools-linux-9477386_latest.zip
+        rm commandlinetools-linux-9477386_latest.zip
+        # 创建SDK Manager要求的目录结构
+        mkdir -p cmdline-tools/latest
+        mv cmdline-tools/* cmdline-tools/latest/
+        rmdir cmdline-tools 2>/dev/null || true
+
+        export ANDROID_SDK_ROOT=$HOME/android
+        echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+        echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+        # 2. 接受许可证并安装必要组件
+        yes | sdkmanager --licenses > /dev/null 2>&1
+        sdkmanager "platforms;android-33"
+        sdkmanager "build-tools;33.0.0"
+        sdkmanager "platform-tools"
+        sdkmanager "cmdline-tools;latest"
+
+        # 3. 下载并安装NDK 25b (与buildozer.spec匹配)
+        cd $HOME/android
+        wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+        unzip -q android-ndk-r25b-linux.zip
+        rm android-ndk-r25b-linux.zip
+
+        export ANDROID_NDK_HOME=$HOME/android/android-ndk-r25b
+        echo "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}" >> $GITHUB_ENV
+
+        # 验证安装
+        echo "=== 环境验证 ==="
+        ls -la $ANDROID_SDK_ROOT/build-tools/33.0.0/aidl
+        ls -d $ANDROID_NDK_HOME
+
+    - name: Clean Buildozer Cache
+      run: |
+        # 清除任何可能干扰的旧配置和缓存
+        rm -rf $HOME/.buildozer
+        rm -rf .buildozer
+        echo "缓存已清理"
+
+    - name: Build with Buildozer
+      env:
+        # 关键：设置环境变量，强制Buildozer使用我们搭建的环境
+        ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+        BUILDOZER_ALLOW_ROOT: 1  # 允许在CI环境中运行
+      run: |
+        echo "=== 开始最终构建 ==="
+        echo "使用的SDK路径: $ANDROID_SDK_ROOT"
+        echo "使用的NDK路径: $ANDROID_NDK_HOME"
+        
+        # 进入项目目录，执行构建
+        cd $GITHUB_WORKSPACE
+        buildozer -v android debug 2>&1 | tee build.log
+
+        # 检查结果
+        if ls bin/*.apk 1>/dev/null 2>&1; then
+          echo "✅ APK构建成功！"
+          ls -lh bin/*.apk
+        else
+          echo "❌ APK构建失败，最后50行日志："
+          tail -50 build.log
+          exit 1
+        fi
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rehabilitation-quiz-apk
+        path: bin/*.apk
+        retention-days: 7
