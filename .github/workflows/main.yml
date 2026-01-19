@@ -1,53 +1,27 @@
-name: Build Android APK
+name: Build APK
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Python
-      uses: actions/setup-python@v4
+    - uses: actions/checkout@v4
+    
+    - name: Build with Buildozer
+      uses: ArtemSBulgakov/buildozer-action@v1
+      id: buildozer
       with:
+        buildozer-version: stable
         python-version: '3.9'
-        
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y python3-pip python3-venv git openjdk-17-jdk
-        pip install buildozer cython
-        
-    - name: Build APK
-      run: |
-        echo "开始构建APK..."
-        
-        # 清理旧配置
-        rm -rf ~/.buildozer 2>/dev/null || true
-        
-        # 让buildozer自己下载SDK和NDK
-        buildozer android clean 2>/dev/null || true
-        
-        # 构建
-        buildozer android debug 2>&1 | tee build.log
-        
-        if ls bin/*.apk 1>/dev/null 2>&1; then
-          echo "✅ APK构建成功!"
-          ls -lh bin/*.apk
-        else
-          echo "❌ APK构建失败"
-          tail -100 build.log
-          exit 1
-        fi
+        target: 'android debug'
         
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: rehabquiz-apk
-        path: bin/*.apk
+        name: app-apk
+        path: ${{ steps.buildozer.outputs.filename }}
