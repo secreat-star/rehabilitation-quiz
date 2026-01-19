@@ -21,13 +21,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt update
-        sudo apt install -y \
-          python3-pip \
-          python3-venv \
-          git \
-          wget \
-          unzip \
-          openjdk-17-jdk
+        sudo apt install -y python3-pip python3-venv git wget unzip openjdk-17-jdk
         
     - name: Install Python dependencies
       run: |
@@ -36,28 +30,19 @@ jobs:
         
     - name: Setup Android SDK
       run: |
-        # 创建正确的SDK目录结构
         mkdir -p ~/android-sdk/cmdline-tools
         cd ~/android-sdk/cmdline-tools
-        
-        # 下载并解压Command Line Tools到正确位置
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-        unzip -q commandlinetools-linux-9477386_latest.zip
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip commandlinetools-linux-9477386_latest.zip
         mv cmdline-tools latest
         rm commandlinetools-linux-9477386_latest.zip
         
-        # 设置环境变量
         export ANDROID_HOME=~/android-sdk
-        export ANDROID_SDK_ROOT=~/android-sdk
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
         
-        # 接受许可
-        yes | sdkmanager --licenses > /dev/null 2>&1 || true
-        
-        # 安装必要的SDK组件
-        sdkmanager --verbose "platforms;android-33"
-        sdkmanager --verbose "build-tools;33.0.0"
-        sdkmanager --verbose "platform-tools"
+        echo y | sdkmanager --sdk_root=$ANDROID_HOME "platforms;android-33"
+        echo y | sdkmanager --sdk_root=$ANDROID_HOME "build-tools;33.0.0"
+        echo y | sdkmanager --sdk_root=$ANDROID_HOME "platform-tools"
         
         echo "Android SDK安装完成"
         
@@ -65,39 +50,30 @@ jobs:
       run: |
         mkdir -p ~/android-ndk
         cd ~/android-ndk
-        
-        # 下载NDK 25b
-        wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
-        unzip -q android-ndk-r25b-linux.zip
+        wget https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
+        unzip android-ndk-r25b-linux.zip
         rm android-ndk-r25b-linux.zip
         
         export ANDROID_NDK_HOME=~/android-ndk/android-ndk-r25b
-        export ANDROID_NDK_ROOT=~/android-ndk/android-ndk-r25b
         
         echo "Android NDK安装完成"
         
     - name: Configure Buildozer
       run: |
-        # 创建buildozer配置文件
         mkdir -p ~/.buildozer
-        cat > ~/.buildozer/buildozer.cfg << 'EOF'
-[buildozer]
-log_level = 2
-android.sdk_path = /home/runner/android-sdk
-android.ndk_path = /home/runner/android-ndk/android-ndk-r25b
-EOF
+        echo "[buildozer]" > ~/.buildozer/buildozer.cfg
+        echo "log_level = 2" >> ~/.buildozer/buildozer.cfg
+        echo "android.sdk_path = /home/runner/android-sdk" >> ~/.buildozer/buildozer.cfg
+        echo "android.ndk_path = /home/runner/android-ndk/android-ndk-r25b" >> ~/.buildozer/buildozer.cfg
         
     - name: Build APK
       run: |
         echo "开始构建APK..."
         
-        # 设置环境变量
         export ANDROID_HOME=~/android-sdk
-        export ANDROID_SDK_ROOT=~/android-sdk
         export ANDROID_NDK_HOME=~/android-ndk/android-ndk-r25b
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
         
-        # 开始构建
         buildozer android debug 2>&1 | tee build.log
         
         if ls bin/*.apk 1>/dev/null 2>&1; then
@@ -105,7 +81,6 @@ EOF
           ls -lh bin/*.apk
         else
           echo "❌ APK构建失败"
-          echo "最后100行日志:"
           tail -100 build.log
           exit 1
         fi
