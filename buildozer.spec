@@ -14,8 +14,6 @@ android.sdk = 33
 android.ndk = 25b
 android.archs = arm64-v8a
 android.permissions = INTERNET
-android.sdk_dir = /home/runner/.buildozer/android/platform
-android.ndk_dir = /home/runner/.buildozer/android/platform/android-ndk
 
 [buildozer]
 log_level = 2
