@@ -1,122 +1,67 @@
-name: Build APK
+    - name: Setup Android SDK & NDK (Controlled)
+      run: |
+        # 1. 在用户目录创建独立Android环境
+        ANDROID_BASE="$HOME/android"
+        mkdir -p "$ANDROID_BASE"
+        cd "$ANDROID_BASE"
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+        # 2. 下载Android命令行工具
+        echo "下载Android命令行工具..."
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+        unzip -q commandlinetools-linux-11076708_latest.zip
+        rm commandlinetools-linux-11076708_latest.zip
+        
+        # 3. 创建正确的目录结构
+        echo "创建目录结构..."
+        # 先检查解压出的目录结构
+        ls -la
+        
+        # 创建cmdline-tools目录
+        mkdir -p cmdline-tools
+        
+        # 将解压出的cmdline-tools目录内容移动到临时位置
+        if [ -d "cmdline-tools" ]; then
+          # 如果解压直接产生了cmdline-tools目录
+          mv cmdline-tools/* . 2>/dev/null || true
+          rmdir cmdline-tools 2>/dev/null || true
+        fi
+        
+        # 创建latest目录并移动所有工具文件到其中
+        mkdir -p cmdline-tools/latest
+        # 移动所有文件到latest目录（排除cmdline-tools目录自身）
+        find . -maxdepth 1 -type f -exec mv {} cmdline-tools/latest/ \; 2>/dev/null || true
+        find . -maxdepth 1 -type d ! -name "." ! -name "cmdline-tools" -exec mv {} cmdline-tools/latest/ \; 2>/dev/null || true
 
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+        # 4. 设置环境变量
+        ANDROID_SDK_ROOT="$ANDROID_BASE"
+        ANDROID_HOME="$ANDROID_SDK_ROOT"
+        echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+        echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+        echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          # Ubuntu 24.04 (Noble) 最小化依赖集，仅包含构建必需项
-          sudo apt-get install -y \
-            python3 \
-            python3-pip \
-            python3-venv \
-            git \
-            wget \
-            unzip \
-            openjdk-17-jdk \
-            libssl-dev \
-            libffi-dev \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
-            zlib1g-dev \
-            libncurses-dev \
-            cmake \
-            ninja-build \
-            patchelf
+        # 5. 接受许可证并安装指定版本的SDK组件
+        echo "安装SDK组件..."
+        yes | sdkmanager --licenses > /dev/null 2>&1
+        sdkmanager "platforms;android-34"
+        sdkmanager "build-tools;34.0.0"
+        sdkmanager "platform-tools"
+        sdkmanager "cmdline-tools;latest"
 
-      - name: Setup Python Environment
-        run: |
-          python3 -m pip install --upgrade pip wheel setuptools virtualenv
-          # 安装确定版本的Buildozer和Cython
-          pip3 install buildozer==1.5.0 cython==0.29.36
+        # 6. 下载并安装指定版本的NDK
+        echo "下载NDK..."
+        cd "$ANDROID_BASE"
+        wget -q https://dl.google.com/android/repository/android-ndk-r26c-linux.zip
+        unzip -q android-ndk-r26c-linux.zip
+        rm android-ndk-r26c-linux.zip
+        ANDROID_NDK_HOME="$ANDROID_BASE/android-ndk-r26c"
+        echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
 
-      - name: Setup Android SDK & NDK (Controlled)
-        run: |
-          # 1. 在用户目录创建独立Android环境
-          ANDROID_BASE="$HOME/android"
-          mkdir -p "$ANDROID_BASE"
-          cd "$ANDROID_BASE"
-
-          # 2. 下载并安装Android命令行工具到指定路径
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q commandlinetools-linux-11076708_latest.zip
-          rm commandlinetools-linux-11076708_latest.zip
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/* cmdline-tools/latest/
-
-          # 3. 设置环境变量（仅对当前步骤和后续步骤生效）
-          ANDROID_SDK_ROOT="$ANDROID_BASE"
-          ANDROID_HOME="$ANDROID_SDK_ROOT"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-
-          # 4. 接受许可证并安装指定版本的SDK组件
-          yes | sdkmanager --licenses > /dev/null 2>&1
-          sdkmanager "platforms;android-34"
-          sdkmanager "build-tools;34.0.0"
-          sdkmanager "platform-tools"
-          sdkmanager "cmdline-tools;latest"
-
-          # 5. 下载并安装指定版本的NDK
-          cd "$ANDROID_BASE"
-          wget -q https://dl.google.com/android/repository/android-ndk-r26c-linux.zip
-          unzip -q android-ndk-r26c-linux.zip
-          rm android-ndk-r26c-linux.zip
-          ANDROID_NDK_HOME="$ANDROID_BASE/android-ndk-r26c"
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME" >> $GITHUB_ENV
-
-          # 验证安装
-          echo "=== 环境验证 ==="
-          echo "SDK Root: $ANDROID_SDK_ROOT"
-          echo "NDK Home: $ANDROID_NDK_HOME"
-          ls -la "$ANDROID_SDK_ROOT/build-tools/34.0.0/aidl"
-
-      - name: Clean Buildozer Cache
-        run: |
-          rm -rf ~/.buildozer .buildozer 2>/dev/null || true
-
-      - name: Build with Buildozer
-        env:
-          # 强制Buildozer使用我们刚刚设置的环境
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-          BUILDOZER_ALLOW_ROOT: 1
-        run: |
-          echo "=== 开始构建 ==="
-          echo "工作目录: $(pwd)"
-          echo "Buildozer使用的SDK: $ANDROID_SDK_ROOT"
-          echo "Buildozer使用的NDK: $ANDROID_NDK_HOME"
-          
-          # 执行构建，输出详细日志
-          timeout 1800 buildozer -v android debug 2>&1 | tee build.log
-          
-          # 检查结果
-          if ls bin/*.apk 1>/dev/null 2>&1; then
-            echo "✅ APK构建成功！"
-            ls -lh bin/*.apk
-          else
-            echo "❌ APK构建失败，最后关键错误："
-            tail -100 build.log | grep -A 20 -B 5 "ERROR\|failed\|error"
-            exit 1
-          fi
-
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rehab-quiz-apk
-          path: bin/*.apk
-          retention-days: 7
+        # 验证安装
+        echo "=== 环境验证 ==="
+        echo "SDK Root: $ANDROID_SDK_ROOT"
+        echo "NDK Home: $ANDROID_NDK_HOME"
+        echo "目录结构:"
+        find "$ANDROID_SDK_ROOT" -type d | sort
+        echo "aidl工具位置:"
+        ls -la "$ANDROID_SDK_ROOT/build-tools/34.0.0/aidl" 2>/dev/null || echo "aidl未找到，查看build-tools目录:"
+        ls -la "$ANDROID_SDK_ROOT/build-tools/34.0.0/" 2>/dev/null || echo "build-tools目录不存在"
