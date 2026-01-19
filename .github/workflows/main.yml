@@ -1,4 +1,4 @@
-name: Build APK with Docker
+name: Build APK
 
 on:
   workflow_dispatch:
@@ -13,27 +13,45 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Build APK inside Docker container (Forced Clean)
+    - name: Build with Isolated Docker
       run: |
-        # 使用社区维护的kivy/buildozer Docker镜像
-        # 关键：在容器内先强制删除可能干扰的本地配置和缓存
+        # 停止并删除所有可能干扰的Docker容器（确保环境干净）
+        docker stop $(docker ps -aq) 2>/dev/null || true
+        docker rm $(docker ps -aq) 2>/dev/null || true
+        
+        # 运行构建容器，关键参数：
+        # --rm: 运行后自动删除容器
+        # --user root: 以root用户运行，避免权限问题
+        # --env ANDROID_SDK_ROOT=/opt/android/sdk: 显式设置SDK路径（容器内路径）
+        # --env ANDROID_HOME=/opt/android/sdk: 显式设置Android Home
+        # --env PATH: 使用容器内PATH，不继承宿主机的
+        # -v $(pwd):/src: 将代码挂载到容器的/src目录
+        # -w /src: 设置工作目录
         docker run --rm \
-          --volume "$(pwd)":/home/user/hostcwd \
-          --workdir /home/user/hostcwd \
+          --user root \
+          --env ANDROID_SDK_ROOT=/opt/android/sdk \
+          --env ANDROID_HOME=/opt/android/sdk \
+          --env PATH="/opt/android/sdk/cmdline-tools/latest/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+          -v "$(pwd)":/src \
+          -w /src \
           kivy/buildozer:latest \
           /bin/bash -c "
-            # 删除可能存在的本地构建缓存和配置
-            rm -rf /home/user/hostcwd/.buildozer 2>/dev/null || true
-            rm -rf ~/.buildozer 2>/dev/null || true
+            echo '=== 当前环境信息 ==='
+            echo '用户：' \$(whoami)
+            echo 'ANDROID_SDK_ROOT：' \$ANDROID_SDK_ROOT
+            echo 'PATH：' \$PATH
+            echo '=== 检查aidl工具 ==='
+            which aidl || find /opt -name aidl 2>/dev/null | head -5
+            echo '=== 开始构建 ==='
+            # 强制删除任何可能存在的本地配置
+            rm -rf /src/.buildozer ~/.buildozer 2>/dev/null
             # 执行构建
-            buildozer android clean 2>/dev/null || true
             buildozer -v android debug
           "
 
-    - name: Upload APK artifact
-      if: success()
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-apk
+        name: rehab-apk
         path: bin/*.apk
-        retention-days: 7
+        if-no-files-found: error
