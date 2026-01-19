@@ -8,20 +8,14 @@ version = 1.0.0
 requirements = python3,kivy==2.1.0
 orientation = portrait
 fullscreen = 0
-
-# Android配置 - 更新到支持NDK 25
 android.api = 33
 android.minapi = 21
 android.sdk = 33
 android.ndk = 25b
 android.archs = arm64-v8a
-
-# 权限
 android.permissions = INTERNET
-
-# Gradle配置
-android.gradle_dependencies = 'com.android.tools.build:gradle:7.4.2'
-android.enable_androidx = True
+android.sdk_dir = /home/runner/.buildozer/android/platform
+android.ndk_dir = /home/runner/.buildozer/android/platform/android-ndk
 
 [buildozer]
 log_level = 2
