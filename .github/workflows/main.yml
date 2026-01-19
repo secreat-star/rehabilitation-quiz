@@ -18,28 +18,70 @@ jobs:
       with:
         python-version: '3.9'
         
-    - name: Install dependencies
+    - name: Install system dependencies
       run: |
         sudo apt update
-        sudo apt install -y python3-pip python3-venv git openjdk-17-jdk wget unzip
+        sudo apt install -y \
+          python3-pip \
+          python3-venv \
+          git \
+          wget \
+          unzip \
+          openjdk-17-jdk \
+          curl \
+          file
+        
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
         pip install buildozer cython
         
-    - name: Pre-download NDK 25b
+    - name: Setup Android SDK and NDK
       run: |
+        # 创建目录
         mkdir -p ~/.buildozer/android/platform
         cd ~/.buildozer/android/platform
         
+        # 下载Android Command Line Tools
+        echo "下载Android Command Line Tools..."
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip -q commandlinetools-linux-9477386_latest.zip
+        mv cmdline-tools tools
+        rm commandlinetools-linux-9477386_latest.zip
+        
+        # 设置环境变量
+        export ANDROID_HOME=~/.buildozer/android/platform
+        export PATH=$PATH:$ANDROID_HOME/tools/bin
+        
+        # 接受许可
+        yes | sdkmanager --licenses || true
+        
+        # 安装必要的组件
+        echo "安装Android SDK组件..."
+        sdkmanager "platforms;android-33"
+        sdkmanager "build-tools;33.0.0"
+        sdkmanager "platform-tools"
+        sdkmanager "cmdline-tools;latest"
+        
         # 下载NDK 25b
+        echo "下载NDK 25b..."
         wget -q https://dl.google.com/android/repository/android-ndk-r25b-linux.zip
         unzip -q android-ndk-r25b-linux.zip
         mv android-ndk-r25b android-ndk
         rm android-ndk-r25b-linux.zip
         
-        echo "NDK 25b已安装"
+        echo "Android SDK和NDK安装完成"
         
     - name: Build APK
       run: |
         echo "开始构建APK..."
+        
+        # 设置环境变量
+        export ANDROID_HOME=~/.buildozer/android/platform
+        export ANDROID_NDK_HOME=$ANDROID_HOME/android-ndk
+        export PATH=$PATH:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools
+        
+        # 开始构建
         buildozer android debug 2>&1 | tee build.log
         
         if ls bin/*.apk 1>/dev/null 2>&1; then
@@ -47,6 +89,7 @@ jobs:
           ls -lh bin/*.apk
         else
           echo "❌ APK构建失败"
+          echo "最后100行日志:"
           tail -100 build.log
           exit 1
         fi
