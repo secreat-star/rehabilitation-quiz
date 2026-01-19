@@ -13,45 +13,18 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Build with Isolated Docker
+    - name: Build with Docker (Skip Root Check)
       run: |
-        # 停止并删除所有可能干扰的Docker容器（确保环境干净）
-        docker stop $(docker ps -aq) 2>/dev/null || true
-        docker rm $(docker ps -aq) 2>/dev/null || true
-        
-        # 运行构建容器，关键参数：
-        # --rm: 运行后自动删除容器
-        # --user root: 以root用户运行，避免权限问题
-        # --env ANDROID_SDK_ROOT=/opt/android/sdk: 显式设置SDK路径（容器内路径）
-        # --env ANDROID_HOME=/opt/android/sdk: 显式设置Android Home
-        # --env PATH: 使用容器内PATH，不继承宿主机的
-        # -v $(pwd):/src: 将代码挂载到容器的/src目录
-        # -w /src: 设置工作目录
         docker run --rm \
-          --user root \
-          --env ANDROID_SDK_ROOT=/opt/android/sdk \
-          --env ANDROID_HOME=/opt/android/sdk \
-          --env PATH="/opt/android/sdk/cmdline-tools/latest/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
           -v "$(pwd)":/src \
           -w /src \
+          --env BUILDOZER_ALLOW_ROOT=1 \
           kivy/buildozer:latest \
-          /bin/bash -c "
-            echo '=== 当前环境信息 ==='
-            echo '用户：' \$(whoami)
-            echo 'ANDROID_SDK_ROOT：' \$ANDROID_SDK_ROOT
-            echo 'PATH：' \$PATH
-            echo '=== 检查aidl工具 ==='
-            which aidl || find /opt -name aidl 2>/dev/null | head -5
-            echo '=== 开始构建 ==='
-            # 强制删除任何可能存在的本地配置
-            rm -rf /src/.buildozer ~/.buildozer 2>/dev/null
-            # 执行构建
-            buildozer -v android debug
-          "
+          buildozer -v android debug
 
     - name: Upload APK
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: rehab-apk
         path: bin/*.apk
-        if-no-files-found: error
