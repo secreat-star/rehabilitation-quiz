@@ -1,32 +1,29 @@
 name: Build APK
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # 手动触发
   push:
     branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Build with Docker (Force Bypass)
-      run: |
-        docker run --rm \
-          -v "$(pwd)":/src \
-          -w /src \
-          kivy/buildozer:latest \
-          /bin/bash -c "
-            # 关键：模拟输入 'y' 并通过管道传递给 buildozer 命令，绕过交互式提示
-            echo 'y' | buildozer -v android debug
-          "
+      # 核心：使用专门为CI优化的Buildozer Action
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          buildozer-version: 'stable'
+          target: 'android debug'
+          workdir: './'
 
-    - name: Upload APK
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: rehabilitation-quiz-apk
-        path: bin/*.apk
+      # 上传生成的APK
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: ${{ steps.buildozer.outputs.filename }}
