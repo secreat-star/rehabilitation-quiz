@@ -42,7 +42,6 @@ jobs:
       run: |
         echo "开始构建APK..."
         
-        # 创建buildozer.spec
         cat > buildozer.spec << 'EOF'
 [app]
 title = 康复医学答题
@@ -63,15 +62,13 @@ fullscreen = 0
 log_level = 2
 EOF
         
-        # 开始构建
         buildozer -v android debug
         
-        # 检查构建结果
         if ls bin/*.apk 1> /dev/null 2>&1; then
-          echo "✅ APK构建成功！"
+          echo "Success"
           ls -la bin/*.apk
         else
-          echo "❌ APK构建失败"
+          echo "Error"
           exit 1
         fi
     
