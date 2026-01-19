@@ -1,21 +1,88 @@
-name: Build APK
-on: [workflow_dispatch]
+name: Build Android APK
+
+on:
+  workflow_dispatch: # 允许在GitHub网页手动触发
+  push:
+    branches: [ main ]
 
 jobs:
-  build:
+  build-apk:
     runs-on: ubuntu-latest
-    container:
-      image: kivy/buildozer:latest
-      
+
     steps:
-    - uses: actions/checkout@v4
-      
-    - name: Build
+    - name: 检出代码
+      uses: actions/checkout@v4
+
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: 安装系统依赖
       run: |
-        buildozer android debug
-        
-    - name: Upload
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          zip \
+          unzip \
+          openjdk-11-jdk \
+          python3-pip \
+          python3-venv \
+          wget
+
+    - name: 安装Python包 (Buildozer)
+      run: |
+        pip install --upgrade pip wheel setuptools
+        pip install buildozer cython==0.29.36
+
+    - name: 下载并设置Android SDK命令行工具
+      run: |
+        mkdir -p ~/android-sdk
+        cd ~/android-sdk
+        # 下载命令行工具包
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip -q commandlinetools-linux-9477386_latest.zip
+        # 创建SDK管理器所需的目录结构
+        mkdir -p cmdline-tools/latest
+        mv cmdline-tools/* cmdline-tools/latest/
+        rm commandlinetools-linux-9477386_latest.zip
+
+        export ANDROID_SDK_ROOT=~/android-sdk
+        echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> $GITHUB_ENV
+        echo "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+    - name: 安装Android SDK必要组件
+      run: |
+        # 接受SDK许可证
+        yes | sdkmanager --licenses > /dev/null 2>&1 || echo "许可证处理完毕"
+        # 安装指定版本的平台和构建工具
+        sdkmanager "platforms;android-33" "build-tools;33.0.0" "platform-tools"
+        # 验证aidl工具是否存在
+        ls -la ${ANDROID_SDK_ROOT}/build-tools/33.0.0/aidl
+
+    - name: 使用Buildozer构建APK
+      run: |
+        # 设置环境变量，确保Buildozer能找到SDK
+        export ANDROID_SDK_ROOT=~/android-sdk
+        echo "开始构建APK，这可能需要一段时间（15-30分钟）..."
+        # 清理之前的构建（可选）
+        buildozer android clean 2>/dev/null || true
+        # 执行debug构建，并输出日志
+        buildozer -v android debug 2>&1 | tee build.log
+
+        # 检查构建结果
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "✅ APK构建成功！"
+          ls -lh bin/*.apk
+        else
+          echo "❌ APK构建失败，查看日志末尾："
+          tail -100 build.log
+          exit 1
+        fi
+
+    - name: 上传生成的APK文件
       uses: actions/upload-artifact@v4
       with:
-        name: apk
+        name: rehabilitation-quiz-apk
         path: bin/*.apk
+        retention-days: 5
