@@ -21,76 +21,24 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          python3-pip \
-          python3-venv \
-          git \
-          zip \
-          unzip \
-          openjdk-17-jdk \
-          wget \
-          curl \
-          unzip \
-          libssl-dev \
-          libffi-dev \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libtinfo5 \
-          cmake \
-          libffi-dev \
-          libxml2-dev \
-          libxslt-dev
+        sudo apt-get install -y python3-pip python3-venv git zip unzip openjdk-17-jdk wget
           
-    - name: Install Buildozer and dependencies
+    - name: Install Python dependencies
       run: |
-        python -m pip install --upgrade pip wheel setuptools
-        pip install buildozer cython==0.29.36 virtualenv
-        
-    - name: Create buildozer.spec
-      run: |
-        cat > buildozer.spec << 'BUILDOZER_SPEC'
-[app]
-title = 康复医学答题
-package.name = rehabquiz
-package.domain = org.rehab
-source.dir = .
-source.main = main.py
-version = 1.0.0
-requirements = python3,kivy==2.1.0,openssl,pyjnius
-orientation = portrait
-fullscreen = 0
-
-[buildozer]
-log_level = 2
-BUILDOZER_SPEC
+        pip install --upgrade pip
+        pip install buildozer cython==0.29.36
         
     - name: Build Android APK
       run: |
-        echo "开始构建APK，这可能需要20-40分钟..."
-        echo "======================================"
+        echo "开始构建APK..."
         
-        # 设置环境变量
-        export PATH=$PATH:$HOME/.local/bin
+        buildozer android debug 2>&1 | tee build.log
         
-        # 清理旧构建
-        buildozer android clean 2>/dev/null || true
-        
-        # 开始构建 - 使用更详细的日志
-        timeout 2400 buildozer -v android debug 2>&1 | tee build.log
-        
-        # 检查构建结果
         if ls bin/*.apk 1>/dev/null 2>&1; then
           echo "✅ APK构建成功!"
-          echo "生成的APK文件:"
           ls -lh bin/*.apk
         else
           echo "❌ APK构建失败"
-          echo "最后50行日志:"
           tail -50 build.log
           exit 1
         fi
@@ -100,12 +48,3 @@ BUILDOZER_SPEC
       with:
         name: rehabquiz-apk
         path: bin/*.apk
-        retention-days: 7
-        
-    - name: Upload build log
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: build.log
-        retention-days: 3
